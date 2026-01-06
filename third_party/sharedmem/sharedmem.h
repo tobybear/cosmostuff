@@ -27,6 +27,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 #include "libc/sysv/consts/o.h"  
 #include "libc/sysv/consts/prot.h" 
 #include "libc/sysv/consts/map.h"
+#include "libc/calls/weirdtypes.h"
 #ifndef INVALID_HANDLE_VALUE
 #define INVALID_HANDLE_VALUE kNtInvalidHandleValue
 #endif
@@ -53,7 +54,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 #if defined(_WIN32) || defined(__COSMOCC__)
 void* create_sharedmem_win(const char* name, const uint32_t mem_size, const uint8_t reset, void** handle) {
 
-	int i;
+	size_t i;
 	int j = 0;
 	uint8_t* p_buf;
 	size_t name_len = strlen(name);

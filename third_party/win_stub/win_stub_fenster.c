@@ -13,8 +13,8 @@
 int main(int argc, char** argv) {
 	struct fenster f = { 0 };
 	int64_t now, time;
-	const char* mapfile1 = "/tmp/fstub";
-	const char* mapfile2 = "/tmp/fstub_pix";
+	char mapfile1[128] = { 0 };
+	char mapfile2[128] = { 0 };
 	uint8_t* p_mem;
 	struct win_stub_data* p_hdr;
 	char title[128] = { 0 };
@@ -30,10 +30,17 @@ int main(int argc, char** argv) {
 	void* hdl2;
 	int fs = 0;
 
+	strcpy(mapfile1, "fstub_exc");
+	strcpy(mapfile2, "fstub_pix");
+	if (argc > 1) strcpy(mapfile1, argv[1]);
+	if (argc > 2) strcpy(mapfile2, argv[2]);
+
 	p_mem = (uint8_t*)create_sharedmem(mapfile1, size1, 0, &hdl1);
 	if (!p_mem) { 
-		printf("Shared memory creation failed -> exit\n"); 
+		printf("Shared memory creation failed for file '%s' -> exit\n", mapfile1); 
 		return 1;
+	} else {
+		printf("Shared memory creation succeeded for file '%s'\n", mapfile1); 
 	}
 	p_hdr = (struct win_stub_data*)p_mem;
 	fenster_sync = &p_hdr->sync;
@@ -43,6 +50,12 @@ int main(int argc, char** argv) {
 	while (W * H == 0) { usleep(100); }
 	size2 = W * H * sizeof(int32_t);
 	p_pixbuf = (uint32_t*)create_sharedmem(mapfile2, size2, 0, &hdl2);
+	if (!p_pixbuf) { 
+		printf("Shared memory creation failed for file '%s' -> exit\n", mapfile2); 
+		return 1;
+	} else {
+		printf("Shared memory creation succeeded for file '%s'\n", mapfile2); 
+	}
 	
 	strcpy_s(title, 128, (const char *)p_hdr->title);
 	f.title = title;

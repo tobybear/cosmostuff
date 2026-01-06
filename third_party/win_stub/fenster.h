@@ -25,12 +25,14 @@ static void usleep(__int64 usec) {
 #else
 #define FENSTER_LINUX
 #define _DEFAULT_SOURCE 1
+#ifndef __COSMOCC__
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xutil.h>
 #ifdef FENSTER_CURSOR
 #include <X11/cursorfont.h>
+#endif
 #endif
 #include <time.h>
 #include <string.h>
@@ -49,6 +51,7 @@ struct fenster_input_data {
 	uint8_t mouse_button_down[3];   // left, right, middle (persistent until release)
 };
 
+#ifndef __COSMOCC__
 struct fenster {
 	const char* title;
 	int width;
@@ -92,6 +95,7 @@ FENSTER_API void fenster_resize(struct fenster* f, const int width, const int he
 FENSTER_API void fenster_cursor(struct fenster* f, const int type);
 #endif // FENSTER_CURSOR
 #define fenster_pixel(f, x, y) ((f)->buf[((y) * (f)->width) + (x)])
+#endif
 
 #ifdef FENSTER_IMPLEMENTATION
 
@@ -545,7 +549,7 @@ FENSTER_API int fenster_open(struct fenster* f) {
 	size_t title_len = strlen(f->title);
 	RECT desired_rect = {0, 0, f->width, f->height};
 	char* title_w;
-	int i;
+	size_t i;
 	int j = 0;
 
 	HINSTANCE hInstance = GetModuleHandle(NULL);
