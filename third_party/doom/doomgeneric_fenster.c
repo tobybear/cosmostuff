@@ -217,31 +217,28 @@ int main(int argc, char **argv) {
 	p_hdr->h = H;
 	inp = (struct fenster_input_data*)&p_mem[hdr_sz];
 
+	result = -1;
 	if (IsWindows()) {
 		strcpy(stub_path, "./win_stub.exe");
+		result = extract_stub("/zip/win_stub.exe", stub_path);
   	} else if (IsXnu()) {
 		strcpy(stub_path, "./win_stub_mac");
+		result = extract_stub("/zip/win_stub_mac", stub_path);
 	} else {
 		strcpy(stub_path, "./win_stub_linux");
+		result = extract_stub("/zip/win_stub_linux", stub_path);
+	}
+	if (result < 0) {
+		printf("Error %d while extracting stub -> exit\n", result); 
+		return 1;
 	}
 
 	pid_t pid = fork();
     if (pid == 0) {
-		int result = -1;
-		if (IsWindows()) {
-			result = extract_stub("/zip/win_stub.exe", stub_path);
-	  	} else if (IsXnu()) {
-			result = extract_stub("/zip/win_stub_mac", stub_path);
-		} else {
-			result = extract_stub("/zip/win_stub_linux", stub_path);
-		}
-		if (result < 0) {
-			printf("Error %d while extracting stub -> exit\n", result); 
-			*stub_sync = 2;
-			return 1;
-		}
 	    char *argv2[4] = { stub_path, (char *)mapfile1, (char *)mapfile2, NULL };
 		if (IsWindows()) {
+			// Windows doesn't like calling an external program from a child process,
+			// so we have to use system() instead of execvp() here :(
 			char stub_path_par[128] = { 0 };
 			strcpy(stub_path_par, stub_path);
 			strcat(stub_path_par, " ");
@@ -253,16 +250,30 @@ int main(int argc, char **argv) {
         	execvp(stub_path, argv2);
 		}
     } else {
+
 		printf("Waiting for framebuffer client...");
-		while (*stub_sync == 0) { usleep(1000); }
-		printf("OK\n");
-		if (*stub_sync != 2) {
-			i_main(argc, argv);
-			*stub_sync = 2;
+		result = -1;
+		// wait 10 seconds for connection to stub
+		for (i = 0; i < 100; ++i) {
+			if (*stub_sync != 0) {
+				result = 0;
+				break;
+			}
+			usleep(100 * 1000);
+		}
+		if (result < 0) {
+			printf("FAILED\n");
+		} else {
+			printf("OK\n");
+			if (*stub_sync != 2) {
+				i_main(argc, argv);
+				*stub_sync = 2;
+			}
+			printf("Finished...\n");
 		}
 
 		result = -1;
-		for (int i = 0; i < 10; ++i) {
+		for (i = 0; i < 10; ++i) {
 			result = unlink(stub_path);
 			if (result == 0) break;
 			usleep(500 * 1000);
@@ -271,8 +282,9 @@ int main(int argc, char **argv) {
 
 		destroy_sharedmem(p_mem, &hdl1);
 		destroy_sharedmem(p_pixbuf, &hdl2);
+
 		if (!IsWindows()) {
-			for (int i = 0; i < 10; ++i) {
+			for (i = 0; i < 10; ++i) {
 				result = unlink(mapfile1);
 				result = unlink(mapfile2);
 				if (result == 0) break;
@@ -281,7 +293,6 @@ int main(int argc, char **argv) {
 			printf("Deleting shared memory file '%s': %d\n", mapfile1, result);
 			printf("Deleting shared memory file '%s': %d\n", mapfile2, result);
 		}
-
 		printf("Exit...\n");
 	}
 	return 0;
