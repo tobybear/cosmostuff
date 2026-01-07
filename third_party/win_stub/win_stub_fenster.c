@@ -1,5 +1,6 @@
 #define FENSTER_IMPLEMENTATION
 #include "fenster.h"
+
 #include "win_stub_data.h"
 #define SHAREDMEM_PRINT_ERRORS
 #include "../sharedmem/sharedmem.h"
@@ -93,4 +94,3 @@ int main(int argc, char** argv) {
 	destroy_sharedmem(p_pixbuf, &hdl2);
 	return 0;
 }
-

@@ -1,7 +1,3 @@
-#include "../sharedmem/sharedmem.h"
-#include "libc/str/str.h"
- #include "../win_stub/win_stub_data.h"
-#include "../win_stub/fenster.h"
 #include "doomgeneric.h"
 #include "doomkeys.h"
 #include "doomtype.h"
@@ -11,9 +7,13 @@
 #include <stdio.h>
 #include <errno.h>
 
-#ifdef __COSMOCC__
-#include "libc/dce.h"
+#include <cosmo.h>
+#include "../sharedmem/sharedmem.h"
+#include "../win_stub/win_stub_data.h"
+#include "../win_stub/fenster.h"
+
 __static_yoink("zip_uri_support");
+
 #define XMIN(a,b) ((a)<(b)?(a):(b))
 ssize_t _copyfd(int in, int out, size_t n) {
   size_t i;
@@ -37,19 +37,6 @@ ssize_t _copyfd(int in, int out, size_t n) {
   return i;
 }
 
-#else
-#ifdef _WIN32
-static void usleep(__int64 usec) {
-	HANDLE timer;
-	LARGE_INTEGER period;
-	period.QuadPart = -(10 * usec);
-	timer = CreateWaitableTimer(NULL, TRUE, NULL);
-	SetWaitableTimer(timer, &period, 0, NULL, NULL, 0);
-	WaitForSingleObject(timer, INFINITE);
-	CloseHandle(timer);
-}
-#endif
-#endif
 
 int i_main(int argc, char **argv);
 
@@ -79,20 +66,20 @@ void DG_DrawFrame() {
 		usleep(500);
 	}
 	*stub_sync = 0;
-	if (inp->key_mod[0] > 0) {
-		if (inp->key['1']) { 
+	if (inp->key_mod[0] > 0) { // ctrl key down
+		if (inp->key['1']) { // 1x scale 
 			p_hdr->win_w = W;
 			p_hdr->win_h = H;
 			*stub_sync = 3;
-		} else if (inp->key['2']) { 
+		} else if (inp->key['2']) { // 2x scale 
 			p_hdr->win_w = W * 2;
 			p_hdr->win_h = H * 2;
 			*stub_sync = 3;
-		} else if (inp->key['3']) { 
+		} else if (inp->key['3']) { // 4x scale 
 			p_hdr->win_w = W * 4;
 			p_hdr->win_h = H * 4;
 			*stub_sync = 3;
-		} else if (inp->key['4']) { 
+		} else if (inp->key['4']) { // fullscreen 
 			p_hdr->win_w = 1;
 			p_hdr->win_h = 1;
 			*stub_sync = 3;
@@ -195,6 +182,8 @@ int main(int argc, char **argv) {
 	const char* title = "CosmoDOOM";
 	const char* mapfile1 = "fstub_exc_doom";
 	const char* mapfile2 = "fstub_pix_doom";
+	char stub_path[128] = { 0 };
+	int i, result;
 
 	uint32_t hdr_sz = sizeof(struct win_stub_data);
 	uint32_t inp_sz = sizeof(struct fenster_input_data);
@@ -211,6 +200,7 @@ int main(int argc, char **argv) {
 		printf("Shared memory creation succeeded for file '%s'\n", mapfile1); 
 	}
 	memset(p_mem, 0, size1);	
+
 	p_pixbuf = (uint32_t*)create_sharedmem(mapfile2, size2, 1, &hdl2);
 	if (p_pixbuf == NULL) {
 		printf("Shared memory creation failed for file '%s' -> exit\n", mapfile2); 
@@ -227,41 +217,41 @@ int main(int argc, char **argv) {
 	p_hdr->h = H;
 	inp = (struct fenster_input_data*)&p_mem[hdr_sz];
 
+	if (IsWindows()) {
+		strcpy(stub_path, "./win_stub.exe");
+  	} else if (IsXnu()) {
+		strcpy(stub_path, "./win_stub_mac");
+	} else {
+		strcpy(stub_path, "./win_stub_linux");
+	}
+
 	pid_t pid = fork();
     if (pid == 0) {
-		char stub_path[128] = { 0 };
 		int result = -1;
 		if (IsWindows()) {
-			strcpy(stub_path, "./win_stub.exe");
 			result = extract_stub("/zip/win_stub.exe", stub_path);
 	  	} else if (IsXnu()) {
-			strcpy(stub_path, "./win_stub_mac");
 			result = extract_stub("/zip/win_stub_mac", stub_path);
 		} else {
-			strcpy(stub_path, "./win_stub_linux");
 			result = extract_stub("/zip/win_stub_linux", stub_path);
 		}
 		if (result < 0) {
 			printf("Error %d while extracting stub -> exit\n", result); 
 			*stub_sync = 2;
 			return 1;
-		} else {
-			printf("Extracting stub successful\n"); 
 		}
-		usleep(500);
 	    char *argv2[4] = { stub_path, (char *)mapfile1, (char *)mapfile2, NULL };
-		printf("Running %s %s %s", stub_path, mapfile1, mapfile2);
 		if (IsWindows()) {
-			strcat(stub_path, " ");
-			strcat(stub_path, mapfile1);
-			strcat(stub_path, " ");
-			strcat(stub_path, mapfile2);
-			system(stub_path);
+			char stub_path_par[128] = { 0 };
+			strcpy(stub_path_par, stub_path);
+			strcat(stub_path_par, " ");
+			strcat(stub_path_par, mapfile1);
+			strcat(stub_path_par, " ");
+			strcat(stub_path_par, mapfile2);
+			system(stub_path_par);
 		} else {
         	execvp(stub_path, argv2);
 		}
-		while (*stub_sync != 2) { usleep(1000); }
-		unlink(stub_path);
     } else {
 		printf("Waiting for framebuffer client...");
 		while (*stub_sync == 0) { usleep(1000); }
@@ -270,8 +260,29 @@ int main(int argc, char **argv) {
 			i_main(argc, argv);
 			*stub_sync = 2;
 		}
+
+		result = -1;
+		for (int i = 0; i < 10; ++i) {
+			result = unlink(stub_path);
+			if (result == 0) break;
+			usleep(500 * 1000);
+		}
+		printf("Deleting stub '%s': %d\n", stub_path, result);
+
 		destroy_sharedmem(p_mem, &hdl1);
 		destroy_sharedmem(p_pixbuf, &hdl2);
+		if (!IsWindows()) {
+			for (int i = 0; i < 10; ++i) {
+				result = unlink(mapfile1);
+				result = unlink(mapfile2);
+				if (result == 0) break;
+				usleep(500 * 1000);
+			}
+			printf("Deleting shared memory file '%s': %d\n", mapfile1, result);
+			printf("Deleting shared memory file '%s': %d\n", mapfile2, result);
+		}
+
+		printf("Exit...\n");
 	}
 	return 0;
 }
